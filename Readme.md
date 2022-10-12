@@ -1,0 +1,21 @@
+# Grid Penguin
+
+- **Simulator**: to create a model to simulate the physical district heating networks
+  - **CHP**: model of the CHP (combined heat and prower production unit). Contains the files in such hierarchy:
+    - CHP.py: main file
+    - FOR_bloess.py: feasible operation region from [Bloess 2016](https://www.sciencedirect.com/science/article/abs/pii/S0306261920302397)
+    - FOR_keypts.py: feasible operation region constructed from key points
+    - storage.py: model of the heat storage
+    - make_params.py: adjust parameters here
+  - **Grid**: model of the heating network.
+    - **Case**: examples of network construction
+      - one_consumer.py: network with one producer, one consumer and two pipes
+      - small.py: (outdated)
+      - large.py: grid with one producer, 4 HX (heat exchange station) and 800 consumers (outdated)
+    - **Model**: building blocks of the network
+      - grid.py: container for all nodes and edges
+      - producer.py: production unit (CHP is also a producer, but here the producer is modeled much simplified)
+      - consumer.py: end consumer that has heat demand
+      - edge.py: water pipes
+      - transfer.py: HX
+    - **Wanda_compare**: to build dummy grid and compare performance with Wanda
