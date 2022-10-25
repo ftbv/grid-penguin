@@ -13,7 +13,9 @@ GridPenguin is a powerful and comprehensive tool to simulate a district heating 
 **Get Started**
 
 Install local package with `pip install -e .`
+
 Go to one folder above the root, then run `$python -m grid-penguin.examples.example_one_consumer`. This script build and run a one-consumer DHS with demand, supply temperature etc. specified in the script.
+
 You can also run a 3-consumer DHS by `$python -m grid-penguin.examples.example_3_consumers`.
 
 **Directory Structure**
