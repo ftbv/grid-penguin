@@ -6,6 +6,7 @@ from typing import Optional, Callable
 class GridObject:
     _object_counter: int = 0
     _current_step: int = 0
+    _safety_check = True
 
     def __init__(
         self,

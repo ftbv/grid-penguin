@@ -19,23 +19,21 @@ def build_grid(
     grid = Grid(  # empty grid
         interval_length=time_params["TimeInterval"],  # 60 min
     )
+    
+    producer = CHP(
+        CHPPreset=producer_params["Generators"][0],
+        blocks=blocks,  # time steps (24 hours -> 24 blocks)
+        heat_capacity=physical_properties[
+            "HeatCapacity"
+        ],  # in J/kg/K # for the water
+        temp_upper_bound=physical_properties["MaxTemp"],
+        pump_efficiency=producer_params["PumpEfficiency"],
+        density=physical_properties["Density"],
+        control_with_temp=producer_params["ControlWithTemp"],
+        energy_unit_conversion=physical_properties["EnergyUnitConversion"],
+    )
+    grid.add_node(producer)  # characterized with temperature
 
-    if producer_params["Type"] == "CHP":
-        producer = CHP(
-            CHPPreset=producer_params["Parameters"],
-            blocks=blocks,  # time steps (24 hours -> 24 blocks)
-            heat_capacity=physical_properties[
-                "HeatCapacity"
-            ],  # in J/kg/K # for the water
-            temp_upper_bound=physical_properties["MaxTemp"],
-            pump_efficiency=producer_params["PumpEfficiency"],
-            density=physical_properties["Density"],
-            control_with_temp=producer_params["ControlWithTemp"],
-            energy_unit_conversion=physical_properties["EnergyUnitConversion"],
-        )
-        grid.add_node(producer)  # characterized with temperature
-    else:
-        raise Exception("producer type not implemented")
 
     consumer = Consumer(
         demand=consumer_demand.copy(),

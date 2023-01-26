@@ -52,14 +52,19 @@ class Junction(Connector):
             pos = self.valve_position[self.current_step]
             assert not np.isnan(pos)
 
+        entry_step_global = []
         for i in range(1, len(self.slots)):
-            self.temp[i, self.current_step] = self.edges[i].get_outlet_temp()
+            self.temp[i, self.current_step], e_s_g = self.edges[i].get_outlet_temp()
+            entry_step_global.append(e_s_g)
 
         self.temp[0, self.current_step] = np.sum(
             pos * self.temp[1:, self.current_step]
         )
+        self.entry_step_global = np.sum(
+            pos*np.array(entry_step_global)
+        )
 
-        return self.temp[0, self.current_step]
+        return self.temp[0, self.current_step], self.entry_step_global
 
     def set_mass_flow(self, slot: int, mass_flow: float) -> None:
         """

@@ -31,6 +31,7 @@ class Node(GridObject):
         self.slots = slots
         self.edges = None
         self.q, self._q_in_W = None, None
+        self.entry_step_global = None
 
     def clear(self) -> None:
         self._clear()
@@ -74,7 +75,6 @@ class Node(GridObject):
 
     def link(self, edges: Tuple["Edge", ...]) -> None:
         assert len(edges) == len(self.slots)
-
         self.edges = edges
 
     def get_outlet_temp(self, slot: int) -> float:
@@ -162,7 +162,11 @@ class Node(GridObject):
 
     @cached_property
     def is_supply(self) -> bool:
-        for edge, slot in self.edges:
-            if slot == 0:
+        # upstream edge should always come first
+        if self.__class__.__name__ == "Junction":
+            for edge in self.edges[1:]:
                 return edge.is_supply
-        raise Exception
+
+        else:
+            for edge in self.edges:
+                return edge.is_supply

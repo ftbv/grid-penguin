@@ -45,6 +45,7 @@ class Edge(GridObject):
         self.blocks = blocks
         self.nodes: Tuple[Tuple[Node, int], Tuple[Node, int]]
         self.diameter = diameter
+        self.length = length
         surface = Edge.diameter_to_surface(diameter)  # cross-section
         self.surface = surface
         self.density = density
@@ -70,6 +71,7 @@ class Edge(GridObject):
                     mass=self._mass_in_pipe,
                     entry_step=-1,
                     entry_temp=historical_t_in,
+                    entry_step_global = -1,
                 )
             ]
 
@@ -133,6 +135,7 @@ class Edge(GridObject):
         self.violations = defaultdict(
             lambda: np.full(self.blocks, np.nan, dtype=np.float)
         )
+        self.entry_step_global = None
         # edge violation only contains one key: 'flow speed'
 
     def link(
@@ -156,12 +159,12 @@ class Edge(GridObject):
         have to estimate it. Right now, we use the mass flow of the previous
         step.
         """
-
         if not np.isnan(self.temp[1, self.current_step]):
             # return side of the grid
-            return self.temp[1, self.current_step]
+            return self.temp[1, self.current_step], self.entry_step_global
 
         outlet_temp: float = 0
+        entry_step_global: float = 0
 
         if self.current_step == 0:
             expected_mass = 0
@@ -181,12 +184,16 @@ class Edge(GridObject):
                 consuming = expected_mass - fulfilled
                 fulfilled = expected_mass
 
+
             plug_temp = self.get_plug_temp(self.current_step - plug.entry_step, plug.entry_temp)
 
             if expected_mass == 0:
                 outlet_temp = plug_temp
+                entry_step_global = plug.entry_step_global
             elif consuming > 0:
                 outlet_temp += plug_temp * (consuming / expected_mass)
+                entry_step_global += plug.entry_step_global * (consuming / expected_mass)
+
 
             if fulfilled >= expected_mass:
                 break
@@ -194,18 +201,21 @@ class Edge(GridObject):
         if fulfilled < expected_mass:
             consuming = expected_mass - fulfilled
             (inlet_node, inlet_slot) = self.nodes[0]
+
             if not issubclass(type(inlet_node), Producer):
-                entry_temp = inlet_node.get_outlet_temp(inlet_slot)
+                entry_temp, e_s_g = inlet_node.get_outlet_temp(inlet_slot)
             else:
-                entry_temp = inlet_node.get_outlet_temp(
+                entry_temp, e_s_g = inlet_node.get_outlet_temp(
                     inlet_slot, self.mass_flow[0, self.current_step - 1]
                 )
 
             # no decay, as inlet time step equals outlet step
             outlet_temp += entry_temp * (consuming / expected_mass)
+            entry_step_global += e_s_g * (consuming / expected_mass)
         self.temp[1, self.current_step] = outlet_temp
+        self.entry_step_global = entry_step_global
 
-        return outlet_temp
+        return outlet_temp, entry_step_global
 
     def get_outlet_temp_mass_bundle(self):
         """
@@ -218,17 +228,17 @@ class Edge(GridObject):
             exp_tau = math.exp(-tau_c / self._thermal_time_constant)
 
             outlet_temp = self.t_ground + (plug.entry_temp - self.t_ground) * exp_tau
-            bundle.append([outlet_temp, plug.mass])
+            bundle.append([outlet_temp, plug.mass, plug.entry_step_global])
 
         (inlet_node, inlet_slot) = self.nodes[0]
         if not issubclass(type(inlet_node), Producer):
-            entry_temp = inlet_node.get_outlet_temp(inlet_slot)
+            entry_temp, e_s_g = inlet_node.get_outlet_temp(inlet_slot)
         else:
-            entry_temp = inlet_node.get_outlet_temp(
+            entry_temp, e_s_g = inlet_node.get_outlet_temp(
                 inlet_slot, self.mass_flow[0, self.current_step - 1]
             )
 
-        bundle.append([entry_temp, np.inf])
+        bundle.append([entry_temp, np.inf, e_s_g])
 
         return bundle
 
@@ -256,9 +266,10 @@ class Edge(GridObject):
         """
         (inlet_node, inlet_slot) = self.nodes[0]
         if not issubclass(type(inlet_node), Producer):
-            entry_temp = inlet_node.get_outlet_temp(inlet_slot)
+            entry_temp, entry_step_global = inlet_node.get_outlet_temp(inlet_slot)
         else:
-            entry_temp = inlet_node.get_outlet_temp(inlet_slot, mass_flow)
+            entry_temp, entry_step_global = inlet_node.get_outlet_temp(inlet_slot, mass_flow)
+
         """
         Newly created plug is added to the beginning of the plug list. 
         Therefore, the sum of plug's mass exceeds 
@@ -270,6 +281,7 @@ class Edge(GridObject):
                 mass=consumed_mass,
                 entry_step=self.current_step,
                 entry_temp=entry_temp,
+                entry_step_global= entry_step_global,
             ),
         )
         self.heat_in_pipe[self.current_step] += (
@@ -278,8 +290,7 @@ class Edge(GridObject):
             * self.heat_capacity
             / self.energy_unit_conversion
         )
-
-        actual_outlet_temp, delay_arr = self.push_plugs_outside(consumed_mass)
+        actual_outlet_temp, delay_arr, entry_step_global = self.push_plugs_outside(consumed_mass)
 
         """
         Actual outlet temperature is calculated as the weighted sum of temperatures of plugs that are
@@ -311,6 +322,7 @@ class Edge(GridObject):
 
         # temperature at the inlet of the edge
         self.temp[0, self.current_step] = entry_temp
+        self.entry_step_global = entry_step_global
         self.plug_cache_saver.append(copy.deepcopy(self.plug_cache))
 
         inlet_pressure = inlet_node.pressure[inlet_slot, self.current_step]
@@ -381,6 +393,7 @@ class Edge(GridObject):
 
     def push_plugs_outside(self, consumed_mass: float):
         actual_outlet_temp: float = 0
+        entry_step_global:float = 0
         fulfilled: float = 0
         hist_blocks = len(self.initial_plug_cache)
         delay_arr = np.zeros(hist_blocks + self.blocks)
@@ -405,6 +418,7 @@ class Edge(GridObject):
                 delay_arr[hist_blocks + plug.entry_step] = consuming / consumed_mass
                 plug_outlet_temp = self.get_plug_temp(self.current_step - plug.entry_step, plug.entry_temp)
                 actual_outlet_temp += plug_outlet_temp * (consuming / consumed_mass)
+                entry_step_global += plug.entry_step_global * (consuming / consumed_mass)
                 self.heat_in_pipe[self.current_step] -= (
                         consuming
                         * plug_outlet_temp
@@ -417,7 +431,7 @@ class Edge(GridObject):
 
         assert fulfilled >= consumed_mass
 
-        return actual_outlet_temp, delay_arr
+        return actual_outlet_temp, delay_arr, entry_step_global
 
     def get_plugs_condition(self, time):
         conditions = []
@@ -430,7 +444,8 @@ class Edge(GridObject):
                     round(plug.mass, 2),
                     round(current_temp, 2),
                     round(plug.entry_temp, 2),
-                    plug.entry_step,
+                    int(plug.entry_step),
+                    plug.entry_step_global - time
                 ]
             )
 
@@ -444,14 +459,15 @@ class Edge(GridObject):
 
     def set_initial_plugs(self, plug_state):
         self.initial_plug_cache = []
-        max_entry_step = plug_state[0][-1]
+        max_entry_step = plug_state[0][-2]
 
-        for mass, _, temp, entry_step in plug_state:
+        for mass, _, temp, entry_step, entry_step_global in plug_state:
             self.initial_plug_cache.append(
                 Plug(
                     mass=mass,
                     entry_step=-1 + entry_step - max_entry_step,
                     entry_temp=temp,
+                    entry_step_global = entry_step_global
                 )
             )
 
@@ -522,10 +538,12 @@ class Edge(GridObject):
 
     @cached_property
     def is_supply(self) -> bool:
+        # upstream node should always come first
+        # for junction this function is replaced
+
         for node, slot in self.nodes:
-            if slot == 1:
-                return node.is_supply
-        raise Exception
+            assert (slot > 0) or (node.__class__.__name__ == "Junction")
+            return node.is_supply
 
     @staticmethod
     def thermal_time_constant(

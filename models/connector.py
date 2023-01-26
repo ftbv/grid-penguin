@@ -30,6 +30,7 @@ class Connector(Node):
             def_valve = default_valve_position
 
         self.valve_position = np.full(self.blocks, def_valve, dtype=float)
+        self.entry_step_global = None
 
     def set_mass_flow_in_direction(self, slot: int, mass_flow: float, direction: bool) -> None:
         """

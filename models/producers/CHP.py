@@ -79,6 +79,7 @@ class CHP(Producer):
         flag = 0
         # self.E[self.current_step] = e_prod
         if self.current_step > 0:
+
             px_q = self.q[self.current_step - 1]
             px_e = self.E[self.current_step - 1]
             px_temp = self.temp[1, self.current_step - 1]

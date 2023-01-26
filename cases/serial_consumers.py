@@ -17,8 +17,8 @@ def build_grid(
     consumer_params = config.ConsumerPreset1
     sup_main_pipe_params = config.PipePreset1
     ret_main_pipe_params = config.PipePreset2
-    sup_side_pipe_params = config.PipePreset3
-    ret_side_pipe_params = config.PipePreset4
+    sup_side_pipes_params = [config.PipePreset3, config.PipePreset5]
+    ret_side_pipes_params = [config.PipePreset4, config.PipePreset6]
     physical_properties = config.PhysicalProperties
     time_params = config.TimeParameters
 
@@ -28,9 +28,8 @@ def build_grid(
         interval_length=time_params["TimeInterval"],  # 60 min
     )
 
-    assert len(producer_params["Generators"]) == 1
     producer = CHP(
-        CHPPreset=producer_params["Parameters"],
+        CHPPreset=producer_params["Generators"][0],
         blocks=blocks,  # time steps (24 hours -> 24 blocks)
         heat_capacity=physical_properties[
             "HeatCapacity"
@@ -42,6 +41,7 @@ def build_grid(
         energy_unit_conversion=physical_properties["EnergyUnitConversion"],
     )
     grid.add_node(producer)  # characterized with temperature
+
 
     sup_branch = Branch(blocks, out_slots_number=consumer_numbers)
     grid.add_node(sup_branch)
@@ -98,7 +98,7 @@ def build_grid(
         )
     )
     """
-    Main return edge is connected to junction at slot 0 (of the junction), and producer at slot 0 (of producer)
+    Main return edge has Junction on slot=number of consumers, and Producer on slot 0.
     """
     edges[1].link(
         nodes=(
@@ -108,6 +108,8 @@ def build_grid(
     )
 
     for i, consumer in enumerate(consumers):
+        sup_side_pipe_params = sup_side_pipes_params[i]
+        ret_side_pipe_params = ret_side_pipes_params[i]
         sup_side_edge = Edge(
             blocks=blocks,
             diameter=sup_side_pipe_params["Diameter"],  # in meters
@@ -153,7 +155,7 @@ def build_grid(
         ret_side_edge.link(
             nodes=(
                 (consumer, 1),
-                (ret_junction, i + 1),
+                (ret_junction, i+1),
             )
         )
 

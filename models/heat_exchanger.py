@@ -19,12 +19,16 @@ class HeatExchanger:
             surface_area: float = 10,  # in m^2
             heat_transfer_q: float = 0.8,  # See Palsson 1999 p45
             heat_transfer_k: float = 50000,  # See Palsson 1999 p51
+            heat_transfer_k_max: float = None,  # these two variables are for dynamic HX behaviour in VT grid
+            demand_capacity: float = None,    # these two variables are for dynamic HX behaviour in VT grid
     ):
         self.heat_capacity = heat_capacity
         self.max_mass_flow_p = max_mass_flow_p
         self.surface_area = surface_area
         self.heat_transfer_q = heat_transfer_q
         self.heat_transfer_k = heat_transfer_k
+        self.heat_transfer_k_max = heat_transfer_k_max
+        self.demand_capacity = demand_capacity
         self.interpolation = None
 
     def minimum_t_supply_p(
@@ -33,13 +37,15 @@ class HeatExchanger:
         t_supply_s: float,  # in degrees C
         mass_flow_p: float,  # in kg/s
         mass_flow_s: float,  # in kg/s
+        demand:float = None, # in MW
     ) -> float:
         """
         Minimum primary supply inlet temperature calculated based on the maximum primary
         and secondary side mass flow and heat demand.
         For the calculation see https://en.wikipedia.org/wiki/Logarithmic_mean_temperature_difference
         """
-        u = self.heat_transfer_k / (
+        k = self.get_k(demand)
+        u = k / (
             mass_flow_p ** (-self.heat_transfer_q) + mass_flow_s ** (-self.heat_transfer_q)
         )
         lmtd = q / u / self.surface_area
@@ -55,6 +61,7 @@ class HeatExchanger:
         setpoint_t_supply_s: float,  # in degrees C
         t_return_s: float,  # in degrees C
         mass_flow_s: float,  # in kg/s
+        demand: float, # in MW
     ) -> Tuple[float, float, float, float]:
         """
         Returns primary mass flow, primary return temperature,
@@ -69,6 +76,7 @@ class HeatExchanger:
         """
         timing.start()
 
+        k = self.get_k(demand)
         t_supply_s = min(setpoint_t_supply_s, t_supply_p - 0.1)
         demanded_q = mass_flow_s * self.heat_capacity * (t_supply_s - t_return_s)
 
@@ -82,7 +90,7 @@ class HeatExchanger:
         c_max = max(self.max_mass_flow_p, mass_flow_s) * self.heat_capacity
         c_r = c_min / c_max
 
-        u = self.heat_transfer_k / (
+        u = k / (
             self.max_mass_flow_p ** (-self.heat_transfer_q) + mass_flow_s ** (-self.heat_transfer_q)
         )
 
@@ -117,6 +125,7 @@ class HeatExchanger:
                 t_in_2=t_return_s,  # in degrees C
                 t_out_2=t_supply_s,  # in degrees C
                 q=q,  # in W
+                k=k,
             )
         else:
             # perform Bilinear Interpolation
@@ -145,7 +154,7 @@ class HeatExchanger:
         mass_flow_p = q / (self.heat_capacity * abs(t_supply_p - t_return_p))
 
         ua = (
-            self.heat_transfer_k
+            k
             / (mass_flow_p ** (-self.heat_transfer_q) + mass_flow_s ** (-self.heat_transfer_q))
             * self.surface_area
         )
@@ -161,7 +170,7 @@ class HeatExchanger:
                   ' tolerance: {}W'
                   ' c_min: {}, q_max: {}, c_max: {}, c_r: {}, ntu: {}, e: {},'
                   ' max_thermal_t_supply_s: {}, max_thermal_t_return_p: {}'
-                  .format(self.heat_transfer_q, self.heat_transfer_k,
+                  .format(self.heat_transfer_q, k,
                           t_supply_p, t_supply_s, t_return_s, t_return_p,
                           mass_flow_s, self.max_mass_flow_p, mass_flow_p,
                           demanded_q, thermal_max_q, q_lmtd, lmtd, ua,
@@ -187,6 +196,7 @@ class HeatExchanger:
         t_in_2: float,  # in degrees C
         t_out_2: float,  # in degrees C
         q: float,  # in W
+        k: float,  # transfer coefficient
     ) -> float:
         """
         Provides the mass flow and outlet temperature of side 1 of a heat exchanger.
@@ -197,7 +207,7 @@ class HeatExchanger:
         See Giraud 2015 (b) p 83 for stability issues
         """
 
-        c_1 = (self.heat_transfer_k * self.surface_area * abs(t_in_1 - t_out_2)) / (
+        c_1 = (k * self.surface_area * abs(t_in_1 - t_out_2)) / (
             self.heat_capacity * abs(t_out_2 - t_in_2)
         ) ** self.heat_transfer_q
 
@@ -247,3 +257,12 @@ class HeatExchanger:
 
     def add_interpolation_values(self,  interpolation: dict[float, dict[float, float]]):
         self.interpolation = interpolation
+
+    def get_k(self, demand=None):
+        if self.heat_transfer_k_max is None:
+            return self.heat_transfer_k
+        else:
+            assert demand is not None
+            return self.heat_transfer_k_max*np.power(demand/self.demand_capacity,0.3)
+    
+

@@ -109,7 +109,10 @@ class Grid(GridInterface):
         temp: Optional[list] = None,
         electricity: Optional[list] = None,
         producer_ids: Optional[list] = None,
+        valve_pos: Optional[dict] = None,
+        end_step: Optional[int] = None,
     ) -> None:
+
         opt_time = GridObject._current_step
         if producer_ids is None:
             producer_ids = [p.id for p in self.producers]
@@ -150,8 +153,21 @@ class Grid(GridInterface):
                         assert run_step > 1
                         producer.E[opt_time: (opt_time + run_step)] = e
 
+        if valve_pos is not None:
+            for n_id, v_pos in valve_pos.items():
+                split = self.get_object(n_id)
+                if not isinstance(e, (list, np.ndarray)):
+                    assert run_step == 1
+                    split.valve_position[:,opt_time] = v_pos
+                else:
+                    assert run_step > 1
+                    split.valve_position[:, opt_time : (opt_time + run_step)] = v_pos
+
         start_step = opt_time
-        while opt_time < min(start_step + run_step, self.blocks):
+        if end_step is None:
+            end_step = min(start_step + run_step, self.blocks)
+
+        while opt_time < end_step:
             self._solve()
             opt_time += 1
 
@@ -325,6 +341,7 @@ class Grid(GridInterface):
         for consumer in self.consumers:
             s_supply_temp[consumer.id] = consumer.s_supply_temp
         return s_supply_temp
+
 
     def clear(self, print_debug: bool = False) -> None:
         timing = Timing()

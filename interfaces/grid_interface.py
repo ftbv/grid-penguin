@@ -32,6 +32,8 @@ class GridInterface(metaclass=abc.ABCMeta):
         temp: Optional[list] = None,
         electricity: Optional[list] = None,
         producer_ids: Optional[list] = None,
+        valve_pos: Optional[dict] = None,
+        end_step = None,
     ) -> None:
         """
         e.g. Heat is either a 2-d list, with the first dimension being the different producers,

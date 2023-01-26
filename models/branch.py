@@ -39,12 +39,14 @@ class Branch(Connector):
 
         if np.isnan(self.temp[slot, self.current_step]):
 
-            outlet_temp = self.edges[0].get_outlet_temp()
+            outlet_temp, entry_step_global = self.edges[0].get_outlet_temp()
             self.temp[:, self.current_step] = outlet_temp
+            self.entry_step_global = entry_step_global
         else:
             outlet_temp = self.temp[slot, self.current_step]
+            entry_step_global = self.entry_step_global
 
-        return outlet_temp
+        return outlet_temp, entry_step_global
 
     def set_mass_flow(self, slot: int, mass_flow: float) -> None:
         """

@@ -56,7 +56,9 @@ class Producer(Node):
         """
         assert slot == 1
         if self.control_with_temp:
-            return self.temp[1, self.current_step]
+            entry_step_global = self.current_step
+            return self.temp[1, self.current_step], entry_step_global
+
         else:
             temp = (
                     self.q[self.current_step]
@@ -82,7 +84,8 @@ class Producer(Node):
                 if (mass_flow is None) or np.isnan(mass_flow):
                     temp = self.edges[1].initial_plug_cache[0].entry_temp
 
-        return min(temp, self.temp_upper_bound)
+        entry_step_global = self.current_step # counting of entry step global starts from producer
+        return min(temp, self.temp_upper_bound), entry_step_global
 
     def set_mass_flow(self, slot: int, mass_flow: float) -> None:
         """
@@ -93,15 +96,15 @@ class Producer(Node):
         if slot == 1:
             self.mass_flow[0, self.current_step] = mass_flow
             self.mass_flow[1, self.current_step] = mass_flow
-
-            self.temp[0, self.current_step] = self.edges[0].get_outlet_temp()
+            self.temp[0, self.current_step], _ = self.edges[0].get_outlet_temp()
             # Set either temp or q, depending on control_with_temp
             self.set_temp_or_q(mass_flow)
 
             outlet_pressure = self.edges[1].pressure[0, self.current_step]
             inlet_pressure = self.edges[0].pressure[1, self.current_step]
 
-            assert (not np.isnan(inlet_pressure)) & (not np.isnan(outlet_pressure))
+            if self._safety_check:
+                assert (not np.isnan(inlet_pressure)) & (not np.isnan(outlet_pressure))
             self.pressure[1, self.current_step] = outlet_pressure
             self.pressure[0, self.current_step] = inlet_pressure
 
@@ -112,6 +115,7 @@ class Producer(Node):
                 ) / self.energy_unit_conversion
 
         assert self.mass_flow[1, self.current_step] == mass_flow
+
 
     def set_temp_or_q(self, mass_flow: float):
         """
@@ -127,7 +131,7 @@ class Producer(Node):
             )
 
             self._q_in_W[self.current_step] = q
-            self._q_in_W[self.current_step] = q / (10 ** 6)
+            self.q[self.current_step] = q / (10 ** 6)
         else:
             self._q_in_W[self.current_step] = self.q[self.current_step] * 10 ** 6
             temp = (
